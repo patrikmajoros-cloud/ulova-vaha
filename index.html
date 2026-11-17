@@ -106,6 +106,7 @@
 
   <!-- PREHĽAD -->
   <section id="prehlad" class="hidden">
+    <div id="oznam" class="card hidden" style="border:2px solid var(--good)"></div>
     <div class="stats">
       <div class="stat"><div class="k">Hmotnosť teraz</div><div class="v" id="sTeraz">–</div></div>
       <div class="stat"><div class="k">Zmena za 24 h</div><div class="v" id="sDen">–</div></div>
@@ -119,11 +120,12 @@
         <button data-dni="7">7 dní</button>
         <button data-dni="30">30 dní</button>
         <button data-dni="90">90 dní</button>
+        <button data-dni="0">↔ Prispôsobiť</button>
       </div>
       <div class="chartbox"><canvas id="graf"></canvas></div>
       <div id="chyba2" class="err"></div>
     </div>
-    <div class="foot">verzia stránky 7</div>
+    <div class="foot">verzia stránky 8</div>
 
     <div class="card" style="margin-top:16px">
       <h3 style="margin-top:0">🐝 Čo sa deje v úli</h3>
@@ -131,6 +133,12 @@
       <ul class="analyza" id="analyza"><li>Načítavam…</li></ul>
       <p class="help" style="margin-bottom:0">Je to automatický odhad iba z hmotnosti, nie istota. Keď niečo nesedí, pozri sa do úľa.</p>
     </div>
+
+    <details class="card" id="dennik">
+      <summary>📟 Čo hlási váha: <span id="dennikPosledne" style="font-weight:400"></span></summary>
+      <p class="help" style="margin-top:0">Toto váha posiela pri každom meraní, to isté, čo predtým písala len do Arduina. Najnovšie hore.</p>
+      <ul class="analyza" id="dennikZoznam"></ul>
+    </details>
 
     <details class="card">
       <summary>📖 Ťahák: čo znamenajú zmeny hmotnosti</summary>
@@ -259,8 +267,9 @@ const cislo = v => (v != null && v !== '' && !isNaN(parseFloat(v))) ? parseFloat
 
 async function stiahni(p, dni, priemer) {
   const url = `https://api.thingspeak.com/channels/${encodeURIComponent(p.kanal)}/feeds.json`
-    + `?api_key=${encodeURIComponent(p.kluc)}&days=${dni}&results=8000`
-    + (priemer ? `&average=${priemer}` : '')
+    + `?api_key=${encodeURIComponent(p.kluc)}&results=8000`
+    + (dni ? `&days=${dni}` : '')        // dni = 0: posledných 8000 meraní, graf sa prispôsobí
+    + (priemer ? `&average=${priemer}` : '&status=true')
     + `&_=${Date.now()}`;
   const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('zle');
@@ -269,7 +278,8 @@ async function stiahni(p, dni, priemer) {
   return d.feeds.map(f => ({
     t: new Date(f.created_at),
     kg: cislo(f.field1), tep: cislo(f.field2), vlh: cislo(f.field3),
-    kal: cislo(f.field7), int: cislo(f.field8),
+    prikaz: cislo(f.field6), kal: cislo(f.field7), int: cislo(f.field8),
+    stav: f.status || '',
   }));
 }
 // pri dlhších obdobiach priemery, inak by ThingSpeak poslal len posledných 8000 meraní
@@ -278,7 +288,15 @@ const priemerPre = d => d >= 90 ? 240 : d >= 30 ? 60 : d >= 7 ? 20 : 0;
 async function zapis(polia) {
   const p = nacitajPrihlasenie();
   if (!p || !p.zapis) throw new Error('kluc');
-  const q = Object.entries(polia).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join('');
+  // pošleme vždy aj ostatné nastavenia, aby jeden zápis nezmazal druhý
+  const d = posledneData && posledneData.dva;
+  const vsetko = {};
+  const iv = d && posledna(d, 'int'), kl = d && posledna(d, 'kal'), pr = d && d.length ? d[d.length - 1].prikaz : null;
+  if (iv) vsetko.field8 = iv.int;
+  if (kl) vsetko.field7 = kl.kal;
+  if (pr === 1 || pr === 2) vsetko.field6 = pr;   // príkaz, ktorý váha ešte nevybavila
+  Object.assign(vsetko, polia);
+  const q = Object.entries(vsetko).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join('');
   const r = await fetch(`https://api.thingspeak.com/update?api_key=${encodeURIComponent(p.zapis)}${q}`, { cache: 'no-store' });
   const odp = (await r.text()).trim();
   if (!r.ok || odp === '0') throw new Error('odmietnute');
@@ -330,7 +348,7 @@ function nakresli(data) {
         tooltip: { callbacks: { label: c => c.parsed.y.toFixed(2) + ' kg' } } },
       scales: {
         // os vždy ukazuje celé zvolené obdobie (napr. celých 7 dní)
-        x: { type: 'time', min: Date.now() - dni * 86400000, max: Date.now(),
+        x: { type: 'time', min: dni ? Date.now() - dni * 86400000 : undefined, max: dni ? Date.now() : undefined,
              time: { tooltipFormat: 'd.M.yyyy HH:mm', unit: dni >= 7 ? 'day' : undefined,
                      displayFormats: { minute: 'HH:mm', hour: 'HH:mm', day: 'd.M.' } },
              ticks: { color: text, maxTicksLimit: 7 }, grid: { color: ciary } },
@@ -519,6 +537,11 @@ async function obnov() {
     nakresli(data);
     rozbor(dva, tyzden);
     kalUkaz();
+    ukazOznamADennik(dva);
+    // keď váha niečo vybavuje, obnovujeme častejšie
+    const posl = dva.length ? dva[dva.length - 1] : null;
+    clearTimeout(window._rychlo);
+    if (posl && [1, 2, 3].includes(posl.prikaz)) window._rychlo = setTimeout(obnov, 15000);
     if (!data.some(z => z.kg != null)) $('chyba2').textContent = 'V tomto období nie sú žiadne merania.';
   } catch (e) {
     if (moje !== cisloPoziadavky) return;
@@ -596,9 +619,38 @@ $('btnNuluj').onclick = async () => {
 $('btnNastavenie').onclick = async () => {
   const s = $('ovladanieSprava');
   s.textContent = 'Posielam…';
-  try { await zapis({ field6: 1 }); s.textContent = '✓ Pri najbližšom meraní váha na 5 minút zapne Wi-Fi „Ulova-vaha-…“. Potom sa na ňu pripoj mobilom.'; }
-  catch (e) { s.textContent = chybaZapisu(e); }
+  try {
+    await zapis({ field6: 1 });
+    s.textContent = `✓ Odoslané. Váha si to prečíta pri najbližšom meraní, ${dalsieMeranieText()}. Keď Wi-Fi zapne, hore na stránke sa ukáže zelený oznam.`;
+    obnov();
+  } catch (e) { s.textContent = chybaZapisu(e); }
 };
+
+// kedy asi bude ďalšie meranie (posledné meranie + interval)
+function dalsieMeranieText() {
+  const d = posledneData && posledneData.dva;
+  const p = d && posledna(d, 'kg'), iv = d && posledna(d, 'int');
+  if (!p || !iv) return 'o chvíľu';
+  const t = new Date(p.t.getTime() + iv.int * 60000 + 30000);
+  return t > new Date() ? 'okolo ' + cas(t) : 'každú chvíľu (mala už merať)';
+}
+
+// zelený oznam hore + denník správ z váhy
+function ukazOznamADennik(dva) {
+  const o = $('oznam');
+  const posl = dva.length ? dva[dva.length - 1] : null;
+  if (posl && posl.prikaz === 3 && Date.now() - posl.t < 5 * 60000) {
+    o.innerHTML = `📶 <b>Wi-Fi váhy je teraz zapnutá.</b> V mobile sa pripoj na sieť ${posl.stav.replace(/^.*?(Ulova-vaha-\w+).*$/, '<b>$1</b>')}, heslo <b>ulovavaha</b>. ${posl.stav.match(/do \d+:\d+/) ? 'Zapnutá ' + posl.stav.match(/do \d+:\d+/)[0] + '.' : ''}`;
+    o.classList.remove('hidden');
+  } else if (posl && (posl.prikaz === 1 || posl.prikaz === 2)) {
+    o.innerHTML = `⏳ Váha ešte nevybavila tvoju požiadavku (${posl.prikaz === 1 ? 'otvoriť nastavenie Wi-Fi' : 'vynulovať'}). Urobí to pri najbližšom meraní, ${dalsieMeranieText()}.`;
+    o.classList.remove('hidden');
+  } else o.classList.add('hidden');
+
+  const spravy = dva.filter(z => z.stav).slice(-15).reverse();
+  $('dennikPosledne').textContent = spravy.length ? cas(spravy[0].t) + ' ' + spravy[0].stav.slice(0, 60) + (spravy[0].stav.length > 60 ? '…' : '') : 'zatiaľ nič (nahraj do váhy verziu 8)';
+  $('dennikZoznam').innerHTML = spravy.map(z => `<li><span class="ik" style="font-size:.85rem;min-width:44px">${cas(z.t)}</span><span>${z.stav.replace(/</g, '&lt;')}</span></li>`).join('');
+}
 
 // ---------- kalibrácia: zmeria rozdiel pred a po položení známeho predmetu ----------
 function kalUkaz() {
