@@ -118,7 +118,7 @@
       <div class="chartbox"><canvas id="graf"></canvas></div>
       <div id="chyba2" class="err"></div>
     </div>
-    <div class="foot" id="posledne"></div>
+    <div class="foot"><span id="posledne"></span> · verzia stránky 6</div>
 
     <div class="card" style="margin-top:16px">
       <h3 style="margin-top:0">🐝 Čo sa deje v úli</h3>
@@ -188,7 +188,7 @@
         <button id="btnNuluj" class="ghost">Vynulovať váhu</button>
         <button id="btnNastavenie" class="ghost">Otvoriť nastavenie Wi-Fi</button>
       </div>
-      <p class="help"><b>Vynulovať:</b> najprv daj z váhy všetko dole, aby bola prázdna. Potom bude ukazovať 0 kg.<br>
+      <p class="help"><b>Vynulovať</b> povie váhe: „to, čo je na tebe teraz, je 0 kg“. Robí sa raz, pri inštalácii, <b>skôr ako na váhu položíš úľ</b>. Na váhe môže zostať len to, čo tam bude stále, napríklad doska alebo podložka, na ktorej bude úľ stáť. Potom stlač tlačidlo a počkaj na ďalšie meranie, váha by mala ukázať približne 0 kg. Až potom polož úľ.<br>
       <b>Otvoriť nastavenie Wi-Fi:</b> váha na 5 minút zapne svoju Wi-Fi „Ulova-vaha-…“ (heslo <b>ulovavaha</b>). Pripoj sa na ňu mobilom a môžeš zmeniť nastavenia.<br>
       <b>Máš nový router alebo inú Wi-Fi?</b> Váha sa naň nevie pripojiť, takže tlačidlo nepomôže. Odpoj ju z napájania a znova zapoj, nastavenie sa otvorí samo.</p>
       <div id="ovladanieSprava" class="help"></div>
@@ -204,18 +204,19 @@
 
       <hr>
       <h4 style="margin-bottom:4px">Kalibrácia</h4>
-      <p class="help" style="margin-top:0">Treba ju len vtedy, keď váha ukazuje inú hmotnosť, než je skutočná. Úľ môže zostať na váhe.</p>
+      <p class="help" style="margin-top:0">Kalibrácia naučí váhu, koľko je 1 kilogram. Váha je už z výroby nastavená, takže ju treba len vtedy, keď ukazuje inú hmotnosť, než je skutočná. Úľ môže zostať na váhe.</p>
+      <p class="help"><b>Ako to funguje:</b> váha meria sama každých <b class="intervalText">?</b> min a výsledok pošle sem na stránku. Ty na váhu položíš niečo, čoho hmotnosť presne poznáš. Stránka porovná, o koľko váha ukázala viac, so skutočnou hmotnosťou, a váhu podľa toho opraví.</p>
       <div id="kal1">
-        <p class="help"><b>1.</b> Priprav si niečo, čoho hmotnosť presne poznáš, napríklad 2 balíky cukru po 5 kg alebo kanister s 10 litrami vody (= 10 kg). Zatiaľ to na váhu nedávaj a stlač Začať.</p>
+        <p class="help"><b>1.</b> Priprav si niečo s presne známou hmotnosťou, v pôvodnom balení. Napríklad 5 balíkov cukru po 1 kg (spolu 5 kg). Čím ťažšie, tým presnejšie, aspoň 2 kg. Zatiaľ to na váhu nedávaj a stlač <b>Začať</b>.</p>
         <button id="kalZacat">Začať kalibráciu</button>
       </div>
       <div id="kal2" class="hidden">
-        <p class="help"><b>2.</b> Teraz to polož na váhu (alebo na úľ) a nechaj to tam. Počkaj, kým váha znova zmeria (najneskôr o <b class="intervalText">?</b> min). Stránka to zistí sama.</p>
-        <p class="help" id="kalStav">Čakám na nové meranie…</p>
+        <p class="help"><b>2.</b> Teraz polož predmet na váhu (alebo na úľ) a nechaj ho tam. Nemusíš nič stláčať. Keď váha o chvíľu znova zmeria (najneskôr o <b class="intervalText">?</b> min), stránka to tu sama ukáže.</p>
+        <p class="kod" id="kalStav" style="font-family:inherit">Čakám na nové meranie…</p>
         <div id="kal3" class="hidden">
-          <p class="help"><b>3.</b> Koľko ten predmet naozaj váži?</p>
+          <p class="help"><b>3.</b> Napíš, koľko ten predmet naozaj váži (napr. 5), a stlač <b>Kalibrovať</b>.</p>
           <div class="row2">
-            <input id="kalSkutocna" type="number" step="0.01" inputmode="decimal" placeholder="kg, napr. 10">
+            <input id="kalSkutocna" type="number" step="0.01" inputmode="decimal" placeholder="kg, napr. 5">
             <button id="kalibruj">Kalibrovať</button>
           </div>
         </div>
@@ -367,7 +368,7 @@ $('ulozUl').onclick = () => {
   const prazdna = parseFloat($('prazdnaHmotnost').value);
   if (!(prazdna > 0)) { $('ulSprava').textContent = 'Zadaj hmotnosť prázdneho úľa.'; return; }
   pis('ulovaVahaUl', { typ: $('typUla').value, nadstavky: $('pocetNadstavkov').value, prazdna });
-  $('ulSprava').textContent = 'Uložené ✓';
+  sprava('ulSprava', '✓ Uložené ' + cas(new Date()), true);
   if (posledneData) rozbor(posledneData.dva, posledneData.tyzden);
 };
 function nacitajUl() {
@@ -554,6 +555,18 @@ $('kopirujKod').onclick = async () => {
   }
 };
 
+// správa pri tlačidle: úspešná po 6 s zmizne, a zmizne aj keď začneš niečo meniť
+function sprava(el, text, uspech) {
+  const e = typeof el === 'string' ? $(el) : el;
+  e.textContent = text;
+  clearTimeout(e._t);
+  if (uspech) e._t = setTimeout(() => { e.textContent = ''; }, 6000);
+}
+['novyInterval', 'kalSkutocna', 'typUla', 'pocetNadstavkov', 'prazdnaHmotnost'].forEach(id =>
+  $(id).addEventListener('input', () => {
+    const m = { novyInterval: 'intervalSprava', kalSkutocna: 'kalSprava' }[id] || 'ulSprava';
+    $(m).textContent = '';
+  }));
 const chybaZapisu = e => e.message === 'kluc'
   ? 'Chýba Write API Key: odhlás sa a prihlás znova so všetkými 3 údajmi.'
   : 'Neuložilo sa. Váha možno práve posielala údaje (ThingSpeak berie len 1 zápis za 15 s). Skús o 20 sekúnd.';
@@ -563,7 +576,7 @@ $('ulozInterval').onclick = async () => {
   const s = $('intervalSprava');
   if (!(n >= 1 && n <= 240)) { s.textContent = 'Zadaj číslo od 1 do 240.'; return; }
   s.textContent = 'Ukladám…';
-  try { await zapis({ field8: n }); s.textContent = `Uložené ✓ Váha bude merať každých ${n} min od najbližšieho zobudenia.`; obnov(); }
+  try { await zapis({ field8: n }); sprava(s, `✓ Uložené ${cas(new Date())}: každých ${n} min. Platí od najbližšieho merania.`, true); obnov(); }
   catch (e) { s.textContent = chybaZapisu(e); }
 };
 
@@ -591,8 +604,8 @@ function kalUkaz() {
   const nove = p && p.t.getTime() > k.t;
   $('kal3').classList.toggle('hidden', !nove);
   $('kalStav').innerHTML = nove
-    ? `Pred položením váha ukazovala <b>${k.kg.toFixed(2)} kg</b>, teraz <b>${p.kg.toFixed(2)} kg</b> (meranie o ${cas(p.t)}). Rozdiel: <b>${(p.kg - k.kg).toFixed(2)} kg</b>.`
-    : `Pred položením váha ukazovala <b>${k.kg.toFixed(2)} kg</b>. Čakám na nové meranie…`;
+    ? `Pred položením: <b>${k.kg.toFixed(2)} kg</b><br>S predmetom: <b>${p.kg.toFixed(2)} kg</b><br>Váha teda nameria predmet ako <b>${(p.kg - k.kg).toFixed(2)} kg</b>.`
+    : `Pred položením váha ukazovala <b>${k.kg.toFixed(2)} kg</b>. ⏳ Čakám, kým váha znova zmeria…`;
 }
 $('kalZacat').onclick = () => {
   const d = posledneData && posledneData.dva;
@@ -619,7 +632,7 @@ $('kalibruj').onclick = async () => {
   try {
     await zapis({ field7: nova.toFixed(1) });
     zmaz('ulovaVahaKal'); kalUkaz();
-    s.textContent = `✓ Hotovo. Váha namerala ${namerane.toFixed(2)} kg, skutočnosť je ${skutocna} kg. Opravené od najbližšieho merania. Predmet môžeš dať dole.`;
+    sprava(s, `✓ Hotovo ${cas(new Date())}. Váha namerala ${namerane.toFixed(2)} kg, skutočnosť je ${skutocna} kg. Opravené od najbližšieho merania. Predmet môžeš dať dole.`, false);
   } catch (e) { s.textContent = chybaZapisu(e); }
 };
 
