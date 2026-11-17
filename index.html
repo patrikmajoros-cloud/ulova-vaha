@@ -89,6 +89,7 @@
     <h1>🐝 Úľová <span>váha</span></h1>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="posledne" class="help" style="text-align:right"></span>
+      <button id="zvoncek" class="ghost hidden" title="Upozornenia" style="padding:8px 10px">🔕</button>
       <button id="odhlasit" class="ghost hidden">Odhlásiť</button>
     </div>
   </header>
@@ -139,7 +140,7 @@
       <div style="position:relative;height:220px"><canvas id="grafDni"></canvas></div>
       <div id="dniSprava" class="help"></div>
     </div>
-    <div class="foot">verzia stránky 10</div>
+    <div class="foot">verzia stránky 11</div>
 
     <div class="card" style="margin-top:16px">
       <h3 style="margin-top:0">🐝 Čo sa deje v úli</h3>
@@ -215,6 +216,8 @@
         <button id="btnNuluj" class="ghost">Vynulovať váhu</button>
         <button id="btnNastavenie" class="ghost">Otvoriť nastavenie Wi-Fi</button>
       </div>
+      <div style="margin-top:10px"><button id="zapniUpozornenia" class="ghost" style="width:100%">🔔 Zapnúť upozornenia (zvuk + oznámenie)</button></div>
+      <p class="help" id="upozorneniaStav">Keď ich zapneš, stránka ti pípne a pošle oznámenie, keď váha zapne Wi-Fi, keď sa vynuluje, alebo keď to vyzerá na roj. Funguje, aj keď si v inom okne (napr. YouTube), len táto stránka musí zostať otvorená.</p>
       <p class="help"><b>Vynulovať</b> povie váhe: „to, čo je na tebe teraz, je 0 kg“. Robí sa raz, pri inštalácii, <b>skôr ako na váhu položíš úľ</b>. Na váhe môže zostať len to, čo tam bude stále, napríklad doska alebo podložka, na ktorej bude úľ stáť. Potom stlač tlačidlo a počkaj na ďalšie meranie, váha by mala ukázať približne 0 kg. Až potom polož úľ.<br>
       <b>Otvoriť nastavenie Wi-Fi:</b> váha na 5 minút zapne svoju Wi-Fi „Ulova-vaha-…“ (heslo <b>ulovavaha</b>). Pripoj sa na ňu mobilom a môžeš zmeniť nastavenia.<br>
       V tom nastavení môžeš zmeniť aj Wi-Fi, napríklad keď ideš váhu presunúť inam.<br>
@@ -442,18 +445,190 @@ function nakresliDni(denne, dva) {
   });
 }
 
-// ---------- stiahnutie dát do Excelu (CSV) ----------
-$('stiahnut').onclick = () => {
-  const riadky = [['Datum a cas', 'Hmotnost (kg)', 'Teplota (C)', 'Vlhkost (%)']];
-  const ciarka = x => x == null ? '' : String(x).replace('.', ',');
-  for (const z of poslednyGraf) if (z.kg != null)
-    riadky.push([z.t.toLocaleString('sk-SK'), ciarka(z.kg.toFixed(2)), ciarka(z.tep), ciarka(z.vlh)]);
-  const csv = '\ufeff' + riadky.map(r => r.join(';')).join('\r\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = `ulova-vaha-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a); a.click(); a.remove();
+// ---------- stiahnutie dát do Excelu (.xlsx s formátovaním) ----------
+function nacitajSkript(src) {
+  return new Promise((ok, chyba) => {
+    if (document.querySelector(`script[src="${src}"]`)) return ok();
+    const e = document.createElement('script'); e.src = src; e.onload = ok; e.onerror = chyba;
+    document.head.appendChild(e);
+  });
+}
+// Excel ukladá čas bez časového pásma, preto mu dáme miestny čas
+const r2 = x => x == null ? null : Math.round(x * 100) / 100;
+const excelCas = t => new Date(t.getTime() - t.getTimezoneOffset() * 60000);
+
+$('stiahnut').onclick = async () => {
+  const tl = $('stiahnut'), povodny = tl.textContent;
+  const body = poslednyGraf.filter(z => z.kg != null);
+  if (!body.length) { tl.textContent = 'Žiadne merania v grafe'; setTimeout(() => tl.textContent = povodny, 3000); return; }
+  tl.textContent = 'Pripravujem…';
+  try {
+    await nacitajSkript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Úľová váha';
+    const ZLTA = 'FFD98E04', SVETLA = 'FFFBE9C4', ZELENA = 'FF2E8B57', CERVENA = 'FFC0392B';
+    const hlavicka = (ws) => {
+      const r = ws.getRow(1);
+      r.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZLTA } };
+      r.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      r.height = 30;
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+    };
+    const pruhy = (ws) => ws.eachRow((r, i) => {
+      if (i > 1 && i % 2 === 0) r.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SVETLA } });
+    });
+
+    // 1. Súhrn
+    const kg = body.map(z => z.kg);
+    const s1 = wb.addWorksheet('Súhrn');
+    s1.columns = [{ header: 'Údaj', key: 'k', width: 28 }, { header: 'Hodnota', key: 'v', width: 22 }];
+    const zmena = kg[kg.length - 1] - kg[0];
+    [
+      ['Obdobie od', excelCas(body[0].t)],
+      ['Obdobie do', excelCas(body[body.length - 1].t)],
+      ['Počet meraní', body.length],
+      ['Hmotnosť na začiatku (kg)', kg[0]],
+      ['Hmotnosť na konci (kg)', kg[kg.length - 1]],
+      ['Celková zmena (kg)', r2(zmena)],
+      ['Najnižšia hmotnosť (kg)', Math.min(...kg)],
+      ['Najvyššia hmotnosť (kg)', Math.max(...kg)],
+      ['Priemerná hmotnosť (kg)', r2(kg.reduce((a, b) => a + b, 0) / kg.length)],
+    ].forEach(([k, v]) => {
+      const r = s1.addRow({ k, v });
+      r.getCell(1).font = { bold: true };
+      if (v instanceof Date) r.getCell(2).numFmt = 'd.m.yyyy h:mm';
+      else if (typeof v === 'number' && !Number.isInteger(v)) r.getCell(2).numFmt = '0.00';
+      r.getCell(2).alignment = { horizontal: 'right' };
+    });
+    s1.getRow(7).getCell(2).font = { bold: true, color: { argb: zmena >= 0 ? ZELENA : CERVENA } };
+    hlavicka(s1);
+
+    // 2. Merania
+    const s2 = wb.addWorksheet('Merania');
+    s2.columns = [
+      { header: 'Dátum', key: 'd', width: 12, style: { numFmt: 'd.m.yyyy' } },
+      { header: 'Čas', key: 'c', width: 8, style: { numFmt: 'h:mm' } },
+      { header: 'Hmotnosť (kg)', key: 'kg', width: 14, style: { numFmt: '0.00' } },
+      { header: 'Zmena oproti predošlému (kg)', key: 'z', width: 16, style: { numFmt: '+0.00;-0.00;0.00' } },
+      { header: 'Teplota (°C)', key: 't', width: 12, style: { numFmt: '0.0' } },
+      { header: 'Vlhkosť (%)', key: 'v', width: 12, style: { numFmt: '0' } },
+    ];
+    body.forEach((z, i) => {
+      const lc = excelCas(z.t);
+      const r = s2.addRow({ d: lc, c: lc, kg: r2(z.kg), z: i ? r2(z.kg - body[i - 1].kg) : null, t: z.tep, v: z.vlh });
+      if (i) r.getCell('z').font = { color: { argb: z.kg - body[i - 1].kg >= 0 ? ZELENA : CERVENA } };
+    });
+    hlavicka(s2); pruhy(s2);
+    s2.autoFilter = 'A1:F1';
+
+    // 3. Po dňoch
+    const s3 = wb.addWorksheet('Po dňoch');
+    s3.columns = [
+      { header: 'Deň', key: 'd', width: 12, style: { numFmt: 'd.m.yyyy' } },
+      { header: 'Ráno (kg)', key: 'a', width: 11, style: { numFmt: '0.00' } },
+      { header: 'Večer (kg)', key: 'b', width: 11, style: { numFmt: '0.00' } },
+      { header: 'Prírastok za deň (kg)', key: 'p', width: 14, style: { numFmt: '+0.00;-0.00;0.00' } },
+      { header: 'Najmenej (kg)', key: 'mn', width: 12, style: { numFmt: '0.00' } },
+      { header: 'Najviac (kg)', key: 'mx', width: 12, style: { numFmt: '0.00' } },
+      { header: 'Počet meraní', key: 'n', width: 10 },
+    ];
+    const dni = new Map();
+    for (const z of body) {
+      const k = z.t.toDateString();
+      if (!dni.has(k)) dni.set(k, []);
+      dni.get(k).push(z);
+    }
+    for (const zz of dni.values()) {
+      const v = zz.map(z => z.kg), p = v[v.length - 1] - v[0];
+      const r = s3.addRow({ d: excelCas(new Date(zz[0].t.getFullYear(), zz[0].t.getMonth(), zz[0].t.getDate())),
+        a: r2(v[0]), b: r2(v[v.length - 1]), p: r2(p), mn: r2(Math.min(...v)), mx: r2(Math.max(...v)), n: v.length });
+      r.getCell('p').font = { bold: true, color: { argb: p >= 0 ? ZELENA : CERVENA } };
+    }
+    hlavicka(s3); pruhy(s3);
+
+    const buf = await wb.xlsx.writeBuffer();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    a.download = `ulova-vaha-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    tl.textContent = '✓ Stiahnuté';
+  } catch (e) {
+    tl.textContent = 'Nepodarilo sa, skús znova';
+  }
+  setTimeout(() => tl.textContent = povodny, 4000);
 };
+
+// ---------- upozornenia: zvuk + oznámenie v systéme ----------
+let zvuk = null;
+const upoz = { zapnute: !!citaj('ulovaVahaUpoz') };
+function pipni() {
+  try {
+    if (!zvuk) zvuk = new (window.AudioContext || window.webkitAudioContext)();
+    if (zvuk.state === 'suspended') zvuk.resume();
+    [0, 0.25, 0.5].forEach((o, i) => {
+      const osc = zvuk.createOscillator(), g = zvuk.createGain();
+      osc.frequency.value = [880, 1175, 1568][i];
+      g.gain.setValueAtTime(0.0001, zvuk.currentTime + o);
+      g.gain.exponentialRampToValueAtTime(0.3, zvuk.currentTime + o + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, zvuk.currentTime + o + 0.22);
+      osc.connect(g).connect(zvuk.destination);
+      osc.start(zvuk.currentTime + o); osc.stop(zvuk.currentTime + o + 0.25);
+    });
+  } catch (e) {}
+}
+function upozorni(nadpis, text) {
+  if (!upoz.zapnute) return;
+  pipni();
+  try {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const n = new Notification(nadpis, { body: text, tag: 'ulova-vaha', icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>" });
+      n.onclick = () => { window.focus(); n.close(); };
+    }
+  } catch (e) {}
+}
+function ukazStavUpozorneni() {
+  const povolene = 'Notification' in window && Notification.permission === 'granted';
+  $('zvoncek').textContent = upoz.zapnute ? '🔔' : '🔕';
+  $('zapniUpozornenia').textContent = upoz.zapnute ? '🔕 Vypnúť upozornenia' : '🔔 Zapnúť upozornenia (zvuk + oznámenie)';
+  if (upoz.zapnute && !povolene && 'Notification' in window && Notification.permission === 'denied')
+    $('upozorneniaStav').textContent = 'Zvuk je zapnutý, ale oznámenia má prehliadač zakázané. Povolíš ich kliknutím na zámok vľavo od adresy stránky → Oznámenia → Povoliť.';
+}
+async function prepniUpozornenia() {
+  upoz.zapnute = !upoz.zapnute;
+  if (upoz.zapnute) {
+    pis('ulovaVahaUpoz', true);
+    if ('Notification' in window && Notification.permission === 'default') {
+      try { await Notification.requestPermission(); } catch (e) {}
+    }
+    upozorni('🐝 Upozornenia sú zapnuté', 'Takto ťa upozorním, keď sa niečo stane.');
+  } else zmaz('ulovaVahaUpoz');
+  ukazStavUpozorneni();
+}
+$('zvoncek').onclick = prepniUpozornenia;
+$('zapniUpozornenia').onclick = prepniUpozornenia;
+// prehliadač pustí zvuk až po prvom kliknutí na stránku
+document.addEventListener('click', () => { if (upoz.zapnute && !zvuk) { try { zvuk = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } }, { once: true });
+
+// sleduje nové udalosti a upozorní len na tie, ktoré prišli po otvorení stránky
+let videne = null;
+function skontrolujUdalosti(dva) {
+  const posl = dva.length ? dva[dva.length - 1] : null;
+  const nove = dva.filter(z => videne && z.t > videne);
+  if (videne) {
+    for (const z of nove) {
+      if (z.prikaz === 3) upozorni('📶 Wi-Fi váhy je zapnutá', z.stav || 'Pripoj sa mobilom na Wi-Fi Ulova-vaha, heslo ulovavaha.');
+      if (/Vynulovane/.test(z.stav)) upozorni('⚖️ Váha je vynulovaná', 'Teraz môžeš položiť úľ.');
+      if (/HX711 neodpoveda/.test(z.stav)) upozorni('⚠️ Váha nevie vážiť', 'Skontroluj káble k doštičke HX711.');
+    }
+    const roj = [...$('analyza').querySelectorAll('li.pozor')].find(li => /rojenie/.test(li.textContent));
+    if (roj && citaj('ulovaVahaRoj') !== roj.textContent) {
+      pis('ulovaVahaRoj', roj.textContent);
+      upozorni('⚠️ Možné rojenie', roj.textContent.replace(/^\S+\s*/, ''));
+    }
+  }
+  if (posl && (!videne || posl.t > videne)) videne = posl.t;
+}
 
 // ---------- typ úľa ----------
 // Orientačné údaje podľa typu úľa (odhady, nie presné čísla):
@@ -646,6 +821,7 @@ async function obnov() {
     rozbor(dva, tyzden);
     kalUkaz();
     ukazOznamADennik(dva);
+    skontrolujUdalosti(dva);
     // keď váha niečo vybavuje, obnovujeme častejšie
     const posl = dva.length ? dva[dva.length - 1] : null;
     clearTimeout(window._rychlo);
@@ -662,6 +838,8 @@ function ukaz() {
   $('prihlasenie').classList.toggle('hidden', !!p);
   $('prehlad').classList.toggle('hidden', !p);
   $('odhlasit').classList.toggle('hidden', !p);
+  $('zvoncek').classList.toggle('hidden', !p);
+  ukazStavUpozorneni();
   if (p) {
     $('kodVahy').textContent = p.zapis ? `${p.kanal}-${p.zapis}-${p.kluc}` : 'Chýba Write API Key: odhlás sa a prihlás znova so všetkými 3 údajmi.';
     nacitajUl();
