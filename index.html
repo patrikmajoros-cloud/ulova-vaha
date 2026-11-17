@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Úľová váha</title>
+<meta name="theme-color" content="#d98e04">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
 <style>
   :root {
     --bg: #faf7f0; --card: #ffffff; --text: #2b2a26; --muted: #77736a;
@@ -107,6 +110,7 @@
   <!-- PREHĽAD -->
   <section id="prehlad" class="hidden">
     <div id="oznam" class="card hidden" style="border:2px solid var(--good)"></div>
+    <div id="kontrolaTS" class="card hidden" style="border:2px solid var(--bad)"></div>
     <div class="stats">
       <div class="stat"><div class="k">Hmotnosť teraz</div><div class="v" id="sTeraz">–</div></div>
       <div class="stat"><div class="k">Zmena za 24 h</div><div class="v" id="sDen">–</div></div>
@@ -124,8 +128,18 @@
       </div>
       <div class="chartbox"><canvas id="graf"></canvas></div>
       <div id="chyba2" class="err"></div>
+      <div style="margin-top:10px;text-align:right">
+        <button id="stiahnut" class="ghost" style="font-size:.85rem;padding:6px 12px">⬇ Stiahnuť dáta z grafu (Excel)</button>
+      </div>
     </div>
-    <div class="foot">verzia stránky 8</div>
+
+    <div class="card">
+      <h3 style="margin-top:0">📊 Prírastok po dňoch (posledných 30 dní)</h3>
+      <p class="help" style="margin-top:-6px">Zelená = úľ v ten deň pribral (znáška), červená = ubudol.</p>
+      <div style="position:relative;height:220px"><canvas id="grafDni"></canvas></div>
+      <div id="dniSprava" class="help"></div>
+    </div>
+    <div class="foot">verzia stránky 10</div>
 
     <div class="card" style="margin-top:16px">
       <h3 style="margin-top:0">🐝 Čo sa deje v úli</h3>
@@ -246,6 +260,21 @@
       <span id="kodSprava" class="help" style="margin-left:8px"></span>
     </details>
   </section>
+
+  <details class="card" id="navod">
+    <summary>🚀 Návod: prvé spustenie novej váhy</summary>
+    <ol class="help" style="padding-left:18px;line-height:1.6">
+      <li><b>Účet ThingSpeak (zadarmo):</b> na thingspeak.mathworks.com si založ účet. Tam sa ukladajú merania.</li>
+      <li><b>Kanál:</b> klikni <b>Channels → New Channel</b>. Názov napr. „Úľová váha“. Zaškrtni a pomenuj tieto polia:<br>
+        Field 1 = Hmotnost, Field 2 = Teplota, Field 3 = Vlhkost, Field 6 = Prikaz, Field 7 = Kalibracia, Field 8 = Interval.<br>
+        Potom dole <b>Save Channel</b>.</li>
+      <li><b>Prihlásenie sem:</b> Channel ID je hore pod názvom kanála. Write a Read API Key sú na karte <b>API Keys</b>. Zadaj ich hore do prihlásenia.</li>
+      <li><b>Kód váhy:</b> po prihlásení otvor <b>⚙️ Nastavenia váhy</b> a daj <b>Kopírovať kód</b>.</li>
+      <li><b>Zapnutie váhy:</b> váha musí byť prázdna, môže na nej byť len doska, ktorá tam zostane. Zapoj ju do napájania.</li>
+      <li><b>Pripojenie:</b> v mobile sa pripoj na Wi-Fi <b>Ulova-vaha-…</b> (heslo <b>ulovavaha</b>). Otvorí sa stránka váhy (ak nie, napíš do prehliadača 192.168.4.1). Klikni <b>Configure WiFi</b>, vyber svoju Wi-Fi, napíš heslo, vlož kód váhy a stlač <b>Save</b>.</li>
+      <li><b>Hotovo:</b> váha sa sama vynuluje a o pár minút sa tu objaví prvé meranie. Až potom na ňu polož úľ.</li>
+    </ol>
+  </details>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
@@ -253,7 +282,10 @@
 <script>
 const $ = id => document.getElementById(id);
 let graf = null, dni = 1, cisloPoziadavky = 0;
-let posledneData = null;   // posledné 2 dni nameraných údajov (na kalibráciu a rozbor)
+let posledneData = null;
+let kanalInfo = null;      // ktoré polia má kanál v ThingSpeaku zapnuté
+let poslednyGraf = [];     // údaje z hlavného grafu (na stiahnutie)
+let grafDni = null;   // posledné 2 dni nameraných údajov (na kalibráciu a rozbor)
 
 // ---------- pamäť prehliadača ----------
 function citaj(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
@@ -265,16 +297,18 @@ const ulozPrihlasenie = p => pis('ulovaVaha', p);
 // ---------- ThingSpeak ----------
 const cislo = v => (v != null && v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
 
-async function stiahni(p, dni, priemer) {
+async function stiahni(p, dni, priemer, extra) {
   const url = `https://api.thingspeak.com/channels/${encodeURIComponent(p.kanal)}/feeds.json`
     + `?api_key=${encodeURIComponent(p.kluc)}&results=8000`
     + (dni ? `&days=${dni}` : '')        // dni = 0: posledných 8000 meraní, graf sa prispôsobí
     + (priemer ? `&average=${priemer}` : '&status=true')
+    + (extra || '')
     + `&_=${Date.now()}`;
   const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('zle');
   const d = await r.json();
   if (d === -1 || !d.feeds) throw new Error('zle');
+  if (d.channel) kanalInfo = d.channel;
   return d.feeds.map(f => ({
     t: new Date(f.created_at),
     kg: cislo(f.field1), tep: cislo(f.field2), vlh: cislo(f.field3),
@@ -358,6 +392,69 @@ function nakresli(data) {
   });
 }
 
+// ---------- kontrola nastavenia ThingSpeaku ----------
+function kontrolaThingSpeak() {
+  const k = $('kontrolaTS');
+  if (!kanalInfo) return;
+  const treba = { field1: 'Hmotnost', field6: 'Prikaz', field7: 'Kalibracia', field8: 'Interval' };
+  const chyba = Object.entries(treba).filter(([f]) => !kanalInfo[f]);
+  if (!chyba.length) { k.classList.add('hidden'); return; }
+  k.innerHTML = '⚠️ <b>V ThingSpeaku treba ešte zapnúť polia:</b> '
+    + chyba.map(([f, n]) => `Field ${f.slice(5)} (${n})`).join(', ')
+    + '. Bez nich nebudú fungovať niektoré nastavenia. V ThingSpeaku otvor svoj kanál → <b>Channel Settings</b> → zaškrtni ich → <b>Save Channel</b>.';
+  k.classList.remove('hidden');
+}
+
+// ---------- prírastok po dňoch ----------
+function nakresliDni(denne, dva) {
+  // prvé meranie z každého dňa
+  const body = [];
+  for (const z of denne) if (z.kg != null) {
+    const kluc = z.t.toDateString();
+    if (!body.length || body[body.length - 1].t.toDateString() !== kluc) body.push(z);
+  }
+  const posl = posledna(dva, 'kg');
+  if (posl) body.push({ t: new Date(), kg: posl.kg });   // dnešok: od rána po teraz
+  const dni = [];
+  for (let i = 1; i < body.length; i++) {
+    const den = new Date(body[i - 1].t);
+    dni.push({ den, r: body[i].kg - body[i - 1].kg });
+  }
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  if (grafDni) grafDni.destroy();
+  $('dniSprava').textContent = dni.length ? '' : 'Zobrazí sa, keď budú merania aspoň z 2 dní.';
+  grafDni = new Chart($('grafDni'), {
+    type: 'bar',
+    data: {
+      labels: dni.map(d => d.den.toLocaleDateString('sk-SK', { day: 'numeric', month: 'numeric' })),
+      datasets: [{ data: dni.map(d => +d.r.toFixed(2)),
+        backgroundColor: dni.map(d => d.r >= 0 ? css('--good') : css('--bad')), borderRadius: 4 }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: c => (c.parsed.y >= 0 ? '+' : '') + c.parsed.y.toFixed(2) + ' kg' } } },
+      scales: {
+        x: { ticks: { color: css('--muted'), maxTicksLimit: 10 }, grid: { display: false } },
+        y: { ticks: { color: css('--muted'), callback: v => v + ' kg' }, grid: { color: css('--line') } }
+      }
+    }
+  });
+}
+
+// ---------- stiahnutie dát do Excelu (CSV) ----------
+$('stiahnut').onclick = () => {
+  const riadky = [['Datum a cas', 'Hmotnost (kg)', 'Teplota (C)', 'Vlhkost (%)']];
+  const ciarka = x => x == null ? '' : String(x).replace('.', ',');
+  for (const z of poslednyGraf) if (z.kg != null)
+    riadky.push([z.t.toLocaleString('sk-SK'), ciarka(z.kg.toFixed(2)), ciarka(z.tep), ciarka(z.vlh)]);
+  const csv = '\ufeff' + riadky.map(r => r.join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `ulova-vaha-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
 // ---------- typ úľa ----------
 // Orientačné údaje podľa typu úľa (odhady, nie presné čísla):
 //   nadstavok, zaklad = hmotnosť nadstavka s prázdnymi plástmi a dna se strechou (kg)
@@ -426,6 +523,13 @@ function rozbor(dva, tyzden) {
   const ticho = (Date.now() - posl.t.getTime()) / 60000;
   if (ticho > Math.max(3 * interval, 45)) {
     pridaj('📡', `Váha sa neozvala ${ticho > 120 ? Math.round(ticho / 60) + ' h' : Math.round(ticho) + ' min'}. Skontroluj batériu alebo Wi-Fi. Merania sa nestratia, váha ich pošle, keď sa znova pripojí.`, true);
+  }
+
+  // 1b. Sila Wi-Fi (váha ju posiela v hlásení)
+  const sp = [...dva].reverse().find(z => /Signal -?\d+/.test(z.stav));
+  if (sp) {
+    const dbm = parseInt(sp.stav.match(/Signal (-?\d+)/)[1], 10);
+    if (dbm < -80) pridaj('📶', `Wi-Fi signál pri váhe je slabý (${dbm} dBm). Merania môžu občas vypadnúť. Pomôže router bližšie alebo Wi-Fi zosilňovač.`, true);
   }
 
   // 2. Náhle zmeny (do 60 minút) za posledných 48 h
@@ -529,9 +633,13 @@ async function obnov() {
   const mojeDni = dni;
   $('chyba2').textContent = '';
   try {
-    const [data, dva, tyzden] = await Promise.all([
-      stiahni(p, mojeDni, priemerPre(mojeDni)), stiahni(p, 2, 0), stiahni(p, 7, 20)]);
+    const [data, dva, tyzden, denne] = await Promise.all([
+      stiahni(p, mojeDni, priemerPre(mojeDni)), stiahni(p, 2, 0), stiahni(p, 7, 20),
+      stiahni(p, 31, 0, '&timescale=1440')]);   // prvá hodnota z každého dňa
     if (moje !== cisloPoziadavky) return;
+    poslednyGraf = data;
+    kontrolaThingSpeak();
+    nakresliDni(denne, dva);
     posledneData = { dva, tyzden };
     ukazStatistiky(dva);
     nakresli(data);
@@ -613,7 +721,11 @@ $('ulozInterval').onclick = async () => {
 $('btnNuluj').onclick = async () => {
   const s = $('ovladanieSprava');
   s.textContent = 'Posielam…';
-  try { await zapis({ field6: 2 }); s.textContent = '✓ Váha sa vynuluje pri najbližšom meraní. Nech je dovtedy prázdna.'; }
+  try {
+    await zapis({ field6: 2 });
+    s.textContent = `✓ Odoslané. Váha sa vynuluje pri najbližšom meraní, ${dalsieMeranieText()}. Nech je dovtedy prázdna.`;
+    await obnov(); skontrolujPole6(s);
+  }
   catch (e) { s.textContent = chybaZapisu(e); }
 };
 $('btnNastavenie').onclick = async () => {
@@ -622,9 +734,18 @@ $('btnNastavenie').onclick = async () => {
   try {
     await zapis({ field6: 1 });
     s.textContent = `✓ Odoslané. Váha si to prečíta pri najbližšom meraní, ${dalsieMeranieText()}. Keď Wi-Fi zapne, hore na stránke sa ukáže zelený oznam.`;
-    obnov();
+    await obnov(); skontrolujPole6(s);
   } catch (e) { s.textContent = chybaZapisu(e); }
 };
+
+// ak ThingSpeak príkaz nezapísal, chýba zaškrtnuté Field 6 v nastaveniach kanála
+function skontrolujPole6(s) {
+  const d = posledneData && posledneData.dva;
+  const posl = d && d.length ? d[d.length - 1] : null;
+  if (!posl || posl.prikaz == null) {
+    s.innerHTML = '⚠️ ThingSpeak príkaz neuložil. V ThingSpeaku otvor <b>Channel Settings</b>, zaškrtni <b>Field 6</b> (nazvi ho Prikaz), daj <b>Save Channel</b> a skús to znova.';
+  }
+}
 
 // kedy asi bude ďalšie meranie (posledné meranie + interval)
 function dalsieMeranieText() {
