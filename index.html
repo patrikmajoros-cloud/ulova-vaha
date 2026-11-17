@@ -21,6 +21,8 @@
   header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
   h1 { font-size: 1.4rem; margin: 0; }
   h1 span { color: var(--accent); }
+  h1 { white-space: nowrap; }
+  #posledne { font-size: .75rem; line-height: 1.2; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
   label { display: block; font-size: .9rem; color: var(--muted); margin: 12px 0 4px; }
   input, select { width: 100%; padding: 12px; font-size: 1rem; border-radius: 10px; border: 1px solid var(--line);
@@ -82,7 +84,10 @@
 <main>
   <header>
     <h1>🐝 Úľová <span>váha</span></h1>
-    <button id="odhlasit" class="ghost hidden">Odhlásiť</button>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="posledne" class="help" style="text-align:right"></span>
+      <button id="odhlasit" class="ghost hidden">Odhlásiť</button>
+    </div>
   </header>
 
   <!-- PRIHLÁSENIE -->
@@ -118,7 +123,7 @@
       <div class="chartbox"><canvas id="graf"></canvas></div>
       <div id="chyba2" class="err"></div>
     </div>
-    <div class="foot"><span id="posledne"></span> · verzia stránky 6</div>
+    <div class="foot">verzia stránky 7</div>
 
     <div class="card" style="margin-top:16px">
       <h3 style="margin-top:0">🐝 Čo sa deje v úli</h3>
@@ -190,7 +195,8 @@
       </div>
       <p class="help"><b>Vynulovať</b> povie váhe: „to, čo je na tebe teraz, je 0 kg“. Robí sa raz, pri inštalácii, <b>skôr ako na váhu položíš úľ</b>. Na váhe môže zostať len to, čo tam bude stále, napríklad doska alebo podložka, na ktorej bude úľ stáť. Potom stlač tlačidlo a počkaj na ďalšie meranie, váha by mala ukázať približne 0 kg. Až potom polož úľ.<br>
       <b>Otvoriť nastavenie Wi-Fi:</b> váha na 5 minút zapne svoju Wi-Fi „Ulova-vaha-…“ (heslo <b>ulovavaha</b>). Pripoj sa na ňu mobilom a môžeš zmeniť nastavenia.<br>
-      <b>Máš nový router alebo inú Wi-Fi?</b> Váha sa naň nevie pripojiť, takže tlačidlo nepomôže. Odpoj ju z napájania a znova zapoj, nastavenie sa otvorí samo.</p>
+      V tom nastavení môžeš zmeniť aj Wi-Fi, napríklad keď ideš váhu presunúť inam.<br>
+      <b>Už si vymenil router alebo váhu presunul a nemeria?</b> Tlačidlo funguje cez internet, takže sa k váhe bez Wi-Fi nedostane. Vtedy váhu odpoj z napájania a znova zapoj. Keď svoju starú Wi-Fi nenájde, nastavenie sa otvorí samo.</p>
       <div id="ovladanieSprava" class="help"></div>
 
       <hr>
@@ -298,7 +304,7 @@ function ukazStatistiky(data) {
       const r = p.kg - pred.kg;
       $('sDen').innerHTML = `<span class="${r >= 0 ? 'up' : 'down'}">${r >= 0 ? '+' : ''}${r.toFixed(2)}</span> <small>kg</small>`;
     } else $('sDen').innerHTML = '<small>málo údajov</small>';
-    $('posledne').textContent = 'Posledné meranie: ' + p.t.toLocaleString('sk-SK');
+    $('posledne').innerHTML = 'posledné meranie<br><b>' + denCas(p.t) + '</b>';
   }
   const iv = posledna(data, 'int');
   document.querySelectorAll('.intervalText').forEach(e => e.textContent = iv ? iv.int : '?');
@@ -547,11 +553,11 @@ document.querySelectorAll('.ranges button').forEach(b => b.onclick = () => {
 
 $('kopirujKod').onclick = async () => {
   const kod = $('kodVahy').textContent;
-  try { await navigator.clipboard.writeText(kod); $('kodSprava').textContent = 'Skopírované ✓'; }
+  try { await navigator.clipboard.writeText(kod); sprava('kodSprava', '✓ Skopírované ' + new Date().toLocaleTimeString('sk-SK'), true); }
   catch (e) {
     const r = document.createRange(); r.selectNodeContents($('kodVahy'));
     const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-    $('kodSprava').textContent = 'Kód je označený, skopíruj ho.';
+    sprava('kodSprava', 'Kód je označený, skopíruj ho (Ctrl+C alebo podržať prst).', true);
   }
 };
 
