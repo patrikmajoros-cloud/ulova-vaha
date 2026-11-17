@@ -16,7 +16,8 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 900px; margin: 0 auto; padding: 16px; }
+  main { max-width: 1400px; margin: 0 auto; padding: 16px; }
+  #prihlasenie { max-width: 480px; margin: 40px auto; }
   header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
   h1 { font-size: 1.4rem; margin: 0; }
   h1 span { color: var(--accent); }
@@ -37,7 +38,29 @@
   .ranges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
   .ranges button { background: transparent; color: var(--accent); padding: 6px 12px; font-size: .9rem; }
   .ranges button.on { background: var(--accent); color: #fff; }
-  .chartbox { position: relative; height: 320px; }
+  .chartbox { position: relative; height: clamp(260px, 60vh, 640px); }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  /* PC a tablet: 4 okienka vedľa seba, graf vyšší */
+  @media (min-width: 760px) {
+    .stats { grid-template-columns: repeat(4, 1fr); }
+    main { padding: 24px 32px; }
+    .chartbox { height: calc(100vh - 320px); min-height: 320px; }
+  }
+  /* mobil na šírku: všetko natesno, graf cez skoro celú obrazovku */
+  @media (orientation: landscape) and (max-height: 500px) {
+    main { padding: 8px 16px; }
+    header { margin-bottom: 8px; }
+    h1 { font-size: 1.1rem; }
+    header button { padding: 4px 10px; font-size: .85rem; }
+    .stats { grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 8px; }
+    .stat { padding: 6px 10px; }
+    .stat .v { font-size: 1.15rem; margin-top: 0; }
+    .card { padding: 8px 12px; margin-bottom: 8px; }
+    .ranges { margin-bottom: 4px; }
+    .ranges button { padding: 3px 10px; font-size: .8rem; }
+    .chartbox { height: calc(100vh - 150px); min-height: 160px; }
+    .foot { margin-top: 0; }
+  }
   .err { color: var(--bad); margin-top: 10px; }
   .hidden { display: none; }
   .foot { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 8px; }
@@ -88,7 +111,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-let graf = null, dni = 1;
+let graf = null, dni = 1, cisloPoziadavky = 0;
 
 function nacitajPrihlasenie() {
   try { return JSON.parse(localStorage.getItem('ulovaVaha') || 'null'); } catch (e) { return null; }
@@ -98,8 +121,11 @@ function zmazPrihlasenie() { try { localStorage.removeItem('ulovaVaha'); } catch
 
 async function stiahni(p, dni) {
   const url = `https://api.thingspeak.com/channels/${encodeURIComponent(p.kanal)}/feeds.json`
-    + `?api_key=${encodeURIComponent(p.kluc)}&days=${dni}&results=8000`;
-  const r = await fetch(url);
+    + `?api_key=${encodeURIComponent(p.kluc)}&days=${dni}&results=8000`
+    // pri dlhších obdobiach si pýtame priemery (inak by ThingSpeak poslal len posledných 8000 meraní)
+    + (dni >= 90 ? '&average=240' : dni >= 30 ? '&average=60' : dni >= 7 ? '&average=20' : '')
+    + `&_=${Date.now()}`;
+  const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('zle');
   const d = await r.json();
   if (d === -1 || !d.feeds) throw new Error('zle');
@@ -163,15 +189,17 @@ function nakresli(data) {
 async function obnov() {
   const p = nacitajPrihlasenie();
   if (!p) return;
+  const moje = ++cisloPoziadavky;   // keď medzitým klikneš na iné obdobie, staré údaje zahodíme
+  const mojeDni = dni;
   $('chyba2').textContent = '';
   try {
-    const data = await stiahni(p, dni);
-    // štatistiky vždy z aspoň 2 dní, aby sedela "zmena za 24 h"
-    const dataStat = dni >= 2 ? data : await stiahni(p, 2);
+    const [data, dataStat] = await Promise.all([stiahni(p, mojeDni), stiahni(p, 2)]);
+    if (moje !== cisloPoziadavky) return;
     ukazStatistiky(dataStat);
     nakresli(data);
     if (!data.some(z => z.kg != null)) $('chyba2').textContent = 'V tomto období nie sú žiadne merania.';
   } catch (e) {
+    if (moje !== cisloPoziadavky) return;
     $('chyba2').textContent = 'Nepodarilo sa načítať údaje. Skontroluj internet.';
   }
 }
