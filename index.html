@@ -104,6 +104,16 @@
       <div id="chyba2" class="err"></div>
     </div>
     <div class="foot" id="posledne"></div>
+    <details class="card" id="nastavenia" style="margin-top:16px">
+      <summary style="cursor:pointer;font-weight:600">⚙️ Nastavenia váhy</summary>
+      <p class="help">Váha teraz meria každých <b id="aktInterval">?</b> minút. Zmena sa prejaví, keď sa váha najbližšie zobudí.</p>
+      <label for="novyInterval">Merať každých (minút)</label>
+      <input id="novyInterval" type="number" min="1" max="240" inputmode="numeric" placeholder="napr. 15">
+      <label for="zapisKluc">Write API Key (len prvýkrát, stránka si ho zapamätá)</label>
+      <input id="zapisKluc" placeholder="ThingSpeak → API Keys → Write API Key">
+      <div style="margin-top:12px"><button id="ulozInterval">Uložiť</button></div>
+      <div id="intervalSprava" class="help" style="margin-top:8px"></div>
+    </details>
   </section>
 </main>
 
@@ -134,6 +144,7 @@ async function stiahni(p, dni) {
     kg: f.field1 != null && f.field1 !== '' ? parseFloat(f.field1) : null,
     tep: f.field2 != null && f.field2 !== '' ? parseFloat(f.field2) : null,
     vlh: f.field3 != null && f.field3 !== '' ? parseFloat(f.field3) : null,
+    int: f.field8 != null && f.field8 !== '' ? parseInt(f.field8) : null,
   }));
 }
 
@@ -156,6 +167,8 @@ function ukazStatistiky(data) {
     } else $('sDen').innerHTML = '<small>málo údajov</small>';
     $('posledne').textContent = 'Posledné meranie: ' + p.t.toLocaleString('sk-SK');
   }
+  const iv = posledna(data, 'int');
+  $('aktInterval').textContent = iv ? iv.int : '?';
   const t = posledna(data, 'tep'), v = posledna(data, 'vlh');
   $('sTeplota').innerHTML = t ? `${t.tep.toFixed(1)} <small>°C</small>` : '<small>zatiaľ nemeria</small>';
   $('sVlhkost').innerHTML = v ? `${v.vlh.toFixed(0)} <small>%</small>` : '<small>zatiaľ nemeria</small>';
@@ -177,7 +190,10 @@ function nakresli(data) {
       plugins: { legend: { display: false },
         tooltip: { callbacks: { label: c => c.parsed.y.toFixed(2) + ' kg' } } },
       scales: {
-        x: { type: 'time', time: { tooltipFormat: 'd.M.yyyy HH:mm',
+        // os vždy ukazuje celé zvolené obdobie (napr. celých 7 dní), aj keď údaje sú len z posledných hodín
+        x: { type: 'time', min: Date.now() - dni * 86400000, max: Date.now(),
+             time: { tooltipFormat: 'd.M.yyyy HH:mm',
+             unit: dni >= 7 ? 'day' : undefined,
              displayFormats: { minute: 'HH:mm', hour: 'HH:mm', day: 'd.M.' } },
              ticks: { color: text, maxTicksLimit: 7 }, grid: { color: ciary } },
         y: { ticks: { color: text, callback: v => v + ' kg' }, grid: { color: ciary } }
@@ -206,6 +222,7 @@ async function obnov() {
 
 function ukaz() {
   const p = nacitajPrihlasenie();
+  if (p && p.zapis) $('zapisKluc').placeholder = 'uložený ✓ (netreba zadávať znova)';
   $('prihlasenie').classList.toggle('hidden', !!p);
   $('prehlad').classList.toggle('hidden', !p);
   $('odhlasit').classList.toggle('hidden', !p);
@@ -224,6 +241,27 @@ document.querySelectorAll('.ranges button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.ranges button').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); dni = +b.dataset.dni; obnov();
 });
+$('ulozInterval').onclick = async () => {
+  const p = nacitajPrihlasenie();
+  const n = parseInt($('novyInterval').value, 10);
+  const kluc = $('zapisKluc').value.trim() || (p && p.zapis) || '';
+  const sprava = $('intervalSprava');
+  if (!(n >= 1 && n <= 240)) { sprava.textContent = 'Zadaj číslo od 1 do 240.'; return; }
+  if (!kluc) { sprava.textContent = 'Zadaj Write API Key.'; return; }
+  sprava.textContent = 'Ukladám...';
+  try {
+    const r = await fetch(`https://api.thingspeak.com/update?api_key=${encodeURIComponent(kluc)}&field8=${n}`, { cache: 'no-store' });
+    const odp = (await r.text()).trim();
+    if (odp === '0' || !r.ok) {
+      sprava.textContent = 'Neuložilo sa. Buď nesedí Write API Key, alebo váha práve posielala, skús o 20 sekúnd.';
+      return;
+    }
+    if (p) { p.zapis = kluc; ulozPrihlasenie(p); }
+    $('zapisKluc').value = '';
+    sprava.textContent = `Uložené. Váha bude merať každých ${n} min od najbližšieho zobudenia.`;
+    obnov();
+  } catch (e) { sprava.textContent = 'Nepodarilo sa spojiť s ThingSpeakom.'; }
+};
 setInterval(obnov, 60000);   // každú minútu sa sama obnoví
 ukaz();
 </script>
