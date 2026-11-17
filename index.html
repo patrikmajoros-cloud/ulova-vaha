@@ -23,7 +23,7 @@
   h1 span { color: var(--accent); }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
   label { display: block; font-size: .9rem; color: var(--muted); margin: 12px 0 4px; }
-  input { width: 100%; padding: 12px; font-size: 1rem; border-radius: 10px; border: 1px solid var(--line);
+  input, select { width: 100%; padding: 12px; font-size: 1rem; border-radius: 10px; border: 1px solid var(--line);
     background: var(--bg); color: var(--text); }
   button { padding: 10px 16px; font-size: 1rem; border-radius: 10px; border: 1px solid var(--accent);
     background: var(--accent); color: #fff; cursor: pointer; }
@@ -64,6 +64,18 @@
   .err { color: var(--bad); margin-top: 10px; }
   .hidden { display: none; }
   .foot { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 8px; }
+  .analyza { list-style: none; padding: 0; margin: 0; }
+  .analyza li { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); line-height: 1.4; }
+  .analyza li:first-child { border-top: 0; }
+  .analyza .ik { font-size: 1.3rem; flex: 0 0 auto; }
+  .analyza li.pozor { color: var(--bad); }
+  .kod { font-family: ui-monospace, Consolas, monospace; background: var(--accent-soft); padding: 12px; border-radius: 10px; word-break: break-all; margin: 8px 0; }
+  details.card summary { cursor: pointer; font-weight: 600; }
+  details.card[open] summary { margin-bottom: 8px; }
+  .tahak h4 { margin: 14px 0 4px; }
+  .tahak p { margin: 0; line-height: 1.45; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 </style>
 </head>
 <body>
@@ -76,11 +88,13 @@
   <!-- PRIHLÁSENIE -->
   <section id="prihlasenie" class="card hidden">
     <h2 style="margin-top:0">Prihlásenie</h2>
-    <p class="help">Zadaj údaje zo svojho ThingSpeak kanála. Stránka si ich zapamätá v tomto zariadení.</p>
-    <label for="kanal">Číslo kanála (Channel ID)</label>
+    <p class="help">Údaje nájdeš vo svojom kanáli na thingspeak.mathworks.com. Stránka si ich zapamätá v tomto zariadení, zadávaš ich len raz.</p>
+    <label for="kanal">Číslo kanála (Channel ID – je hore pod názvom kanála)</label>
     <input id="kanal" inputmode="numeric" placeholder="napr. 2712345">
-    <label for="kluc">Read API Key</label>
-    <input id="kluc" placeholder="ThingSpeak → API Keys → Read API Key">
+    <label for="kluc">Read API Key (karta API Keys)</label>
+    <input id="kluc" placeholder="16 znakov">
+    <label for="zapis">Write API Key (karta API Keys)</label>
+    <input id="zapis" placeholder="16 znakov">
     <div style="margin-top:16px"><button id="prihlasit">Prihlásiť</button></div>
     <div id="chyba" class="err"></div>
   </section>
@@ -93,6 +107,7 @@
       <div class="stat"><div class="k">Teplota</div><div class="v" id="sTeplota">–</div></div>
       <div class="stat"><div class="k">Vlhkosť</div><div class="v" id="sVlhkost">–</div></div>
     </div>
+
     <div class="card">
       <div class="ranges">
         <button data-dni="1" class="on">24 hodín</button>
@@ -104,15 +119,96 @@
       <div id="chyba2" class="err"></div>
     </div>
     <div class="foot" id="posledne"></div>
-    <details class="card" id="nastavenia" style="margin-top:16px">
-      <summary style="cursor:pointer;font-weight:600">⚙️ Nastavenia váhy</summary>
-      <p class="help">Váha teraz meria každých <b id="aktInterval">?</b> minút. Zmena sa prejaví, keď sa váha najbližšie zobudí.</p>
-      <label for="novyInterval">Merať každých (minút)</label>
-      <input id="novyInterval" type="number" min="1" max="240" inputmode="numeric" placeholder="napr. 15">
-      <label for="zapisKluc">Write API Key (len prvýkrát, stránka si ho zapamätá)</label>
-      <input id="zapisKluc" placeholder="ThingSpeak → API Keys → Write API Key">
-      <div style="margin-top:12px"><button id="ulozInterval">Uložiť</button></div>
+
+    <div class="card" style="margin-top:16px">
+      <h3 style="margin-top:0">🐝 Čo sa deje v úli</h3>
+      <ul class="analyza" id="analyza"><li>Načítavam…</li></ul>
+      <p class="help" style="margin-bottom:0">Je to automatický odhad iba z hmotnosti, nie istota. Keď niečo nesedí, pozri sa do úľa.</p>
+    </div>
+
+    <details class="card">
+      <summary>📖 Ťahák: čo znamenajú zmeny hmotnosti</summary>
+      <div class="tahak">
+        <h4>📈 Úľ pomaly priberá cez deň (+0,5 až +5 kg za deň)</h4>
+        <p>Znáška. Včely nosia nektár. Čím viac, tým silnejšia znáška. Na jar a v lete je to dobrá správa.</p>
+        <h4>🌙 V noci trochu ubudne (0,2 až 1 kg)</h4>
+        <p>Normálne. Včely z nektáru odparujú vodu a robia z neho med.</p>
+        <h4>🌅 Ráno trochu klesne, večer stúpne</h4>
+        <p>Lietavky ráno odletia na pašu a večer sa vrátia. Čím väčší rozdiel, tým silnejšie včelstvo.</p>
+        <h4>⚠️ Náhly pokles o 1 až 4 kg cez deň (máj až júl)</h4>
+        <p>Pravdepodobne rojenie: časť včiel s matkou odletela. Skontroluj úľ a okolie.</p>
+        <h4>✋ Náhly veľký pokles (viac ako 4 kg)</h4>
+        <p>Niekto z úľa niečo zobral, napríklad pri vytáčaní medu, alebo bol úľ otvorený. Ak si to nebol ty, skontroluj úľ.</p>
+        <h4>➕ Náhly prírastok</h4>
+        <p>Pridaný nadstavok, kŕmenie, sneh na streche alebo niečo leží na úli.</p>
+        <h4>📉 Úľ pomaly ubúda v sezóne</h4>
+        <p>Nie je znáška (zlé počasie, nič nekvitne) a včely míňajú zásoby. Ak to trvá viac dní, zváž prikŕmenie.</p>
+        <h4>❄️ Zima: úbytok 0,1 až 0,3 kg za deň</h4>
+        <p>Normálna zimná spotreba. Ak ubúda rýchlejšie alebo zásob je málo, včelstvo môže vyhladovať.</p>
+        <h4>➖ Váha sa dlho nemení vôbec (ani o gramy)</h4>
+        <p>Váha možno neposiela údaje, alebo je včelstvo veľmi slabé. Pozri, kedy bolo posledné meranie.</p>
+      </div>
+    </details>
+
+    <details class="card" id="mojUl">
+      <summary>🏠 Môj úľ (pre odhad zásob medu)</summary>
+      <p class="help">Keď vieme, koľko váži prázdny úľ, stránka odhadne, koľko je v ňom medu a na koľko dní to včelám vystačí.</p>
+      <label for="typUla">Typ úľa</label>
+      <select id="typUla">
+        <option value="">– vyber –</option>
+        <option value="langstroth">Langstroth</option>
+        <option value="dadant">Dadant</option>
+        <option value="optimal">Optimal (39 × 24)</option>
+        <option value="bul">B-úľ (39 × 24)</option>
+        <option value="zander">Zander</option>
+        <option value="iny">Iný / nenašiel som svoj</option>
+      </select>
+      <div class="row2">
+        <div>
+          <label for="pocetNadstavkov">Počet nadstavkov</label>
+          <input id="pocetNadstavkov" type="number" min="1" max="8" value="2" inputmode="numeric">
+        </div>
+        <div>
+          <label for="prazdnaHmotnost">Prázdny úľ (kg)</label>
+          <input id="prazdnaHmotnost" type="number" step="0.5" inputmode="decimal" placeholder="napr. 20">
+        </div>
+      </div>
+      <p class="help">Prázdny úľ = drevo, dno, strecha a rámiky s prázdnymi plástmi, bez včiel a medu. Číslo sa doplní podľa typu úľa len orientačne. Ak ho vieš presnejšie (napr. si úľ odvážil), prepíš ho.</p>
+      <button id="ulozUl">Uložiť</button>
+      <span id="ulSprava" class="help" style="margin-left:8px"></span>
+    </details>
+
+    <details class="card" id="nastavenia">
+      <summary>⚙️ Nastavenia váhy</summary>
+
+      <h4 style="margin-bottom:4px">Kód váhy</h4>
+      <p class="help" style="margin-top:0">Tento kód vložíš do váhy pri nastavovaní Wi-Fi (políčko „Kod vahy“). Skopíruj si ho skôr, než sa pripojíš na Wi-Fi váhy.</p>
+      <div class="kod" id="kodVahy">–</div>
+      <button id="kopirujKod" class="ghost">Kopírovať kód</button>
+      <span id="kodSprava" class="help" style="margin-left:8px"></span>
+
+      <hr>
+      <h4 style="margin-bottom:4px">Ako často merať</h4>
+      <p class="help" style="margin-top:0">Teraz meria každých <b id="aktInterval">?</b> minút. Zmena sa prejaví pri najbližšom zobudení váhy. Odporúčané je 15 minút, kratšie len na skúšanie (rýchlejšie míňa batériu).</p>
+      <div class="row2">
+        <input id="novyInterval" type="number" min="1" max="240" inputmode="numeric" placeholder="minút, napr. 15">
+        <button id="ulozInterval">Uložiť</button>
+      </div>
       <div id="intervalSprava" class="help" style="margin-top:8px"></div>
+
+      <hr>
+      <h4 style="margin-bottom:4px">Kalibrácia (keď váha neváži presne)</h4>
+      <ol class="help" style="padding-left:18px">
+        <li>Prázdna váha má ukazovať približne 0 kg. Ak nie, vynuluj ju pri nastavovaní Wi-Fi (políčko „Vynulovat vahu“).</li>
+        <li>Polož na váhu niečo, čoho hmotnosť presne poznáš, napríklad 10 litrov vody = 10 kg.</li>
+        <li>Počkaj na ďalšie meranie. Teraz váha ukazuje: <b id="kalTeraz">–</b></li>
+        <li>Napíš skutočnú hmotnosť toho predmetu a stlač Kalibrovať.</li>
+      </ol>
+      <div class="row2">
+        <input id="kalSkutocna" type="number" step="0.01" inputmode="decimal" placeholder="skutočná hmotnosť v kg">
+        <button id="kalibruj">Kalibrovať</button>
+      </div>
+      <div id="kalSprava" class="help" style="margin-top:8px"></div>
     </details>
   </section>
 </main>
@@ -122,18 +218,22 @@
 <script>
 const $ = id => document.getElementById(id);
 let graf = null, dni = 1, cisloPoziadavky = 0;
+let posledneData = null;   // posledné 2 dni nameraných údajov (na kalibráciu a rozbor)
 
-function nacitajPrihlasenie() {
-  try { return JSON.parse(localStorage.getItem('ulovaVaha') || 'null'); } catch (e) { return null; }
-}
-function ulozPrihlasenie(p) { try { localStorage.setItem('ulovaVaha', JSON.stringify(p)); } catch (e) {} }
-function zmazPrihlasenie() { try { localStorage.removeItem('ulovaVaha'); } catch (e) {} }
+// ---------- pamäť prehliadača ----------
+function citaj(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+function pis(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function zmaz(k) { try { localStorage.removeItem(k); } catch (e) {} }
+const nacitajPrihlasenie = () => citaj('ulovaVaha');
+const ulozPrihlasenie = p => pis('ulovaVaha', p);
 
-async function stiahni(p, dni) {
+// ---------- ThingSpeak ----------
+const cislo = v => (v != null && v !== '' && !isNaN(parseFloat(v))) ? parseFloat(v) : null;
+
+async function stiahni(p, dni, priemer) {
   const url = `https://api.thingspeak.com/channels/${encodeURIComponent(p.kanal)}/feeds.json`
     + `?api_key=${encodeURIComponent(p.kluc)}&days=${dni}&results=8000`
-    // pri dlhších obdobiach si pýtame priemery (inak by ThingSpeak poslal len posledných 8000 meraní)
-    + (dni >= 90 ? '&average=240' : dni >= 30 ? '&average=60' : dni >= 7 ? '&average=20' : '')
+    + (priemer ? `&average=${priemer}` : '')
     + `&_=${Date.now()}`;
   const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('zle');
@@ -141,22 +241,35 @@ async function stiahni(p, dni) {
   if (d === -1 || !d.feeds) throw new Error('zle');
   return d.feeds.map(f => ({
     t: new Date(f.created_at),
-    kg: f.field1 != null && f.field1 !== '' ? parseFloat(f.field1) : null,
-    tep: f.field2 != null && f.field2 !== '' ? parseFloat(f.field2) : null,
-    vlh: f.field3 != null && f.field3 !== '' ? parseFloat(f.field3) : null,
-    int: f.field8 != null && f.field8 !== '' ? parseInt(f.field8) : null,
+    kg: cislo(f.field1), tep: cislo(f.field2), vlh: cislo(f.field3),
+    kal: cislo(f.field7), int: cislo(f.field8),
   }));
+}
+// pri dlhších obdobiach priemery, inak by ThingSpeak poslal len posledných 8000 meraní
+const priemerPre = d => d >= 90 ? 240 : d >= 30 ? 60 : d >= 7 ? 20 : 0;
+
+async function zapis(polia) {
+  const p = nacitajPrihlasenie();
+  if (!p || !p.zapis) throw new Error('kluc');
+  const q = Object.entries(polia).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join('');
+  const r = await fetch(`https://api.thingspeak.com/update?api_key=${encodeURIComponent(p.zapis)}${q}`, { cache: 'no-store' });
+  const odp = (await r.text()).trim();
+  if (!r.ok || odp === '0') throw new Error('odmietnute');
 }
 
 function posledna(data, kluc) {
-  for (let i = data.length - 1; i >= 0; i--) if (data[i][kluc] != null && !isNaN(data[i][kluc])) return data[i];
+  for (let i = data.length - 1; i >= 0; i--) if (data[i][kluc] != null) return data[i];
   return null;
 }
+const kg2 = x => (x >= 0 ? '+' : '') + x.toFixed(2).replace('.', ',') + ' kg';
+const cas = t => t.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
+const denCas = t => t.toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+// ---------- horné okienka ----------
 function ukazStatistiky(data) {
   const p = posledna(data, 'kg');
   $('sTeraz').innerHTML = p ? `${p.kg.toFixed(2)} <small>kg</small>` : '–';
-  // zmena za 24 h: posledná hodnota mínus hodnota spred 24 hodín
+  $('kalTeraz').textContent = p ? `${p.kg.toFixed(2)} kg (meranie o ${cas(p.t)})` : '–';
   if (p) {
     const ciel = p.t.getTime() - 24 * 3600 * 1000;
     let pred = null;
@@ -174,10 +287,10 @@ function ukazStatistiky(data) {
   $('sVlhkost').innerHTML = v ? `${v.vlh.toFixed(0)} <small>%</small>` : '<small>zatiaľ nemeria</small>';
 }
 
+// ---------- graf ----------
 function nakresli(data) {
-  const farba = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-  const text = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
-  const ciary = getComputedStyle(document.documentElement).getPropertyValue('--line').trim();
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const farba = css('--accent'), text = css('--muted'), ciary = css('--line');
   const body = data.filter(z => z.kg != null).map(z => ({ x: z.t, y: z.kg }));
   if (graf) graf.destroy();
   graf = new Chart($('graf'), {
@@ -190,11 +303,10 @@ function nakresli(data) {
       plugins: { legend: { display: false },
         tooltip: { callbacks: { label: c => c.parsed.y.toFixed(2) + ' kg' } } },
       scales: {
-        // os vždy ukazuje celé zvolené obdobie (napr. celých 7 dní), aj keď údaje sú len z posledných hodín
+        // os vždy ukazuje celé zvolené obdobie (napr. celých 7 dní)
         x: { type: 'time', min: Date.now() - dni * 86400000, max: Date.now(),
-             time: { tooltipFormat: 'd.M.yyyy HH:mm',
-             unit: dni >= 7 ? 'day' : undefined,
-             displayFormats: { minute: 'HH:mm', hour: 'HH:mm', day: 'd.M.' } },
+             time: { tooltipFormat: 'd.M.yyyy HH:mm', unit: dni >= 7 ? 'day' : undefined,
+                     displayFormats: { minute: 'HH:mm', hour: 'HH:mm', day: 'd.M.' } },
              ticks: { color: text, maxTicksLimit: 7 }, grid: { color: ciary } },
         y: { ticks: { color: text, callback: v => v + ' kg' }, grid: { color: ciary } }
       }
@@ -202,6 +314,153 @@ function nakresli(data) {
   });
 }
 
+// ---------- typ úľa ----------
+// orientačná hmotnosť jedného nadstavka s rámikmi a prázdnymi plástmi + dno, strecha a veko
+const ULE = {
+  langstroth: { nadstavok: 7, zaklad: 6 },
+  dadant:     { nadstavok: 9, zaklad: 7 },
+  optimal:    { nadstavok: 5.5, zaklad: 5 },
+  bul:        { nadstavok: 6, zaklad: 5 },
+  zander:     { nadstavok: 6, zaklad: 5 },
+};
+function dopocitajPrazdny() {
+  const u = ULE[$('typUla').value];
+  const n = parseInt($('pocetNadstavkov').value, 10) || 1;
+  if (u) $('prazdnaHmotnost').value = (u.zaklad + n * u.nadstavok).toFixed(1);
+}
+$('typUla').onchange = dopocitajPrazdny;
+$('pocetNadstavkov').oninput = dopocitajPrazdny;
+$('ulozUl').onclick = () => {
+  const prazdna = parseFloat($('prazdnaHmotnost').value);
+  if (!(prazdna > 0)) { $('ulSprava').textContent = 'Zadaj hmotnosť prázdneho úľa.'; return; }
+  pis('ulovaVahaUl', { typ: $('typUla').value, nadstavky: $('pocetNadstavkov').value, prazdna });
+  $('ulSprava').textContent = 'Uložené ✓';
+  if (posledneData) rozbor(posledneData.dva, posledneData.tyzden);
+};
+function nacitajUl() {
+  const u = citaj('ulovaVahaUl');
+  if (!u) return;
+  $('typUla').value = u.typ || '';
+  $('pocetNadstavkov').value = u.nadstavky || 2;
+  $('prazdnaHmotnost').value = u.prazdna;
+}
+
+// ---------- rozbor: čo sa deje v úli ----------
+function rozbor(dva, tyzden) {
+  const vystup = [];
+  const pridaj = (ik, text, pozor) => vystup.push({ ik, text, pozor });
+  const body = dva.filter(z => z.kg != null);
+  const mesiac = new Date().getMonth() + 1;
+  const sezona = mesiac >= 3 && mesiac <= 9;
+  const rojenie = mesiac >= 4 && mesiac <= 7;
+
+  if (body.length < 2) {
+    $('analyza').innerHTML = '<li><span class="ik">⏳</span><span>Zatiaľ málo meraní. Rozbor sa ukáže po pár hodinách.</span></li>';
+    return;
+  }
+  const posl = body[body.length - 1];
+
+  // 1. Posiela váha údaje?
+  const iv = posledna(dva, 'int');
+  const interval = iv ? iv.int : 15;
+  const ticho = (Date.now() - posl.t.getTime()) / 60000;
+  if (ticho > Math.max(3 * interval, 45)) {
+    pridaj('📡', `Váha sa neozvala ${ticho > 120 ? Math.round(ticho / 60) + ' h' : Math.round(ticho) + ' min'}. Skontroluj batériu alebo Wi-Fi. Merania sa nestratia, váha ich pošle, keď sa znova pripojí.`, true);
+  }
+
+  // 2. Náhle zmeny (do 60 minút) za posledných 48 h
+  let pokles = null, prirastok = null;
+  for (let i = 0; i < body.length; i++) {
+    for (let j = i - 1; j >= 0 && body[i].t - body[j].t <= 60 * 60000; j--) {
+      const r = body[i].kg - body[j].kg;
+      if (r < 0 && (!pokles || r < pokles.r)) pokles = { r, t: body[i].t };
+      if (r > 0 && (!prirastok || r > prirastok.r)) prirastok = { r, t: body[i].t };
+    }
+  }
+  // pokles a prírastok blízko seba a podobne veľké = len dočasná manipulácia (otvorený úľ, niečo položené a zobraté)
+  if (pokles && prirastok && pokles.r <= -1 && prirastok.r >= 1 && Math.abs(pokles.t - prirastok.t) <= 3 * 3600000
+      && Math.abs(prirastok.r + pokles.r) < 0.3 * Math.max(prirastok.r, -pokles.r)) {
+    const prvy = pokles.t < prirastok.t ? pokles : prirastok;
+    pridaj('🔧', `${denCas(prvy.t)} sa hmotnosť na chvíľu zmenila o ${Math.max(prirastok.r, -pokles.r).toFixed(1).replace('.', ',')} kg a potom sa vrátila. Asi bol úľ otvorený alebo na ňom niečo chvíľu ležalo.`);
+    pokles = null; prirastok = null;
+  }
+  if (pokles && pokles.r <= -1) {
+    const h = pokles.t.getHours();
+    if (rojenie && pokles.r > -4 && h >= 9 && h <= 17) {
+      pridaj('⚠️', `${denCas(pokles.t)} úľ náhle stratil ${kg2(-pokles.r).slice(1)}. Cez deň v sezóne rojenia to často znamená <b>rojenie</b>. Skontroluj úľ a okolie.`, true);
+    } else {
+      pridaj('✋', `${denCas(pokles.t)} úľ náhle stratil ${kg2(-pokles.r).slice(1)}. Asi si niečo z úľa zobral alebo bol otvorený. Ak si to nebol ty, skontroluj úľ.`, true);
+    }
+  }
+  if (prirastok && prirastok.r >= 1.5) {
+    pridaj('➕', `${denCas(prirastok.t)} úľ náhle pribral ${kg2(prirastok.r).slice(1)}. Pridaný nadstavok, kŕmenie, alebo niečo leží na úli (sneh, konár).`);
+  }
+
+  // 3. Zmena za 24 h (bez náhlych skokov, tie sú vyššie)
+  const ciel = posl.t.getTime() - 24 * 3600000;
+  let pred = null;
+  for (const z of body) if (z.t.getTime() <= ciel) pred = z;
+  if (pred) {
+    let d = posl.kg - pred.kg;
+    if (pokles && pokles.r <= -1 && pokles.t > pred.t) d -= pokles.r;
+    if (prirastok && prirastok.r >= 1.5 && prirastok.t > pred.t) d -= prirastok.r;
+    if (sezona) {
+      if (d >= 2) pridaj('🍯', `Silná znáška: za deň ${kg2(d)}. Včely nosia veľa nektáru. Myslieť na miesto (nadstavok).`);
+      else if (d >= 0.5) pridaj('🌼', `Znáška: za deň ${kg2(d)}. Včely nosia nektár.`);
+      else if (d > -0.3) pridaj('☁️', `Pokojný deň (${kg2(d)}). Slabá znáška alebo nelietali (počasie).`);
+      else pridaj('📉', `Úľ ubúda (${kg2(d)} za deň). Nie je znáška a včely míňajú zásoby. Ak to trvá viac dní, zváž prikŕmenie.`, d < -0.7);
+    } else {
+      if (d > 0.3) pridaj('❓', `V zime úľ pribral ${kg2(d)}. Býva to kŕmením, snehom na streche alebo vlhkosťou.`);
+      else if (d >= -0.3) pridaj('❄️', `Normálna zimná spotreba (${kg2(d)} za deň).`);
+      else pridaj('📉', `Spotreba je vyššia než v zime bežne (${kg2(d)} za deň). Sleduj zásoby.`, true);
+    }
+  } else {
+    pridaj('⏳', 'Zmenu za deň ukážem, keď budú merania aspoň za 24 hodín.');
+  }
+
+  // 4. Týždeň
+  const tb = tyzden.filter(z => z.kg != null);
+  let dennyPriemer = null;
+  if (tb.length > 1) {
+    const dniSpolu = (tb[tb.length - 1].t - tb[0].t) / 86400000;
+    if (dniSpolu >= 2) {
+      const zmena = tb[tb.length - 1].kg - tb[0].kg;
+      dennyPriemer = zmena / dniSpolu;
+      const n = Math.round(dniSpolu);
+      pridaj('📅', `Za ${n <= 4 ? 'posledné ' + n + ' dni' : 'posledných ' + n + ' dní'}: ${kg2(zmena)} (priemerne ${kg2(dennyPriemer)} za deň).`);
+    }
+  }
+
+  // 5. Zásoby (ak je zadaný úľ)
+  const ul = citaj('ulovaVahaUl');
+  if (ul && ul.prazdna > 0) {
+    const vcely = sezona ? 2.5 : 1.5;   // orientačná hmotnosť včiel a plodu
+    const zasoby = posl.kg - ul.prazdna - vcely;
+    if (zasoby < 0) {
+      pridaj('🏠', 'Zásoby sa nedajú odhadnúť: úľ váži menej ako zadaný prázdny úľ. Skontroluj hmotnosť prázdneho úľa v časti Môj úľ.');
+    } else {
+      let t = `Odhad zásob medu v úli: približne <b>${zasoby.toFixed(1).replace('.', ',')} kg</b>.`;
+      if (dennyPriemer != null && dennyPriemer < -0.05) t += ` Pri terajšej spotrebe vydržia asi <b>${Math.round(zasoby / -dennyPriemer)} dní</b>.`;
+      const malo = !sezona && zasoby < 10;
+      if (malo) t += ' Na zimu je to málo (potrebujú asi 15 až 20 kg), zváž kŕmenie.';
+      pridaj('🍯', t, malo);
+    }
+  } else {
+    pridaj('🏠', 'Vyplň „Môj úľ“ nižšie a ukážem aj odhad, koľko medu je v úli.');
+  }
+
+  // 6. Teplota v úli (keď bude senzor)
+  const tp = posledna(dva, 'tep');
+  if (tp && sezona) {
+    if (tp.tep >= 33 && tp.tep <= 36.5) pridaj('🌡️', `Teplota ${tp.tep.toFixed(1)} °C: včely vyhrievajú plod, všetko v poriadku.`);
+    else if (tp.tep < 30) pridaj('🌡️', `Teplota ${tp.tep.toFixed(1)} °C je na plodisko nízka. Slabé včelstvo alebo bez plodu?`, true);
+  }
+
+  $('analyza').innerHTML = vystup.map(v =>
+    `<li class="${v.pozor ? 'pozor' : ''}"><span class="ik">${v.ik}</span><span>${v.text}</span></li>`).join('');
+}
+
+// ---------- načítanie všetkého ----------
 async function obnov() {
   const p = nacitajPrihlasenie();
   if (!p) return;
@@ -209,10 +468,13 @@ async function obnov() {
   const mojeDni = dni;
   $('chyba2').textContent = '';
   try {
-    const [data, dataStat] = await Promise.all([stiahni(p, mojeDni), stiahni(p, 2)]);
+    const [data, dva, tyzden] = await Promise.all([
+      stiahni(p, mojeDni, priemerPre(mojeDni)), stiahni(p, 2, 0), stiahni(p, 7, 20)]);
     if (moje !== cisloPoziadavky) return;
-    ukazStatistiky(dataStat);
+    posledneData = { dva, tyzden };
+    ukazStatistiky(dva);
     nakresli(data);
+    rozbor(dva, tyzden);
     if (!data.some(z => z.kg != null)) $('chyba2').textContent = 'V tomto období nie sú žiadne merania.';
   } catch (e) {
     if (moje !== cisloPoziadavky) return;
@@ -222,46 +484,69 @@ async function obnov() {
 
 function ukaz() {
   const p = nacitajPrihlasenie();
-  if (p && p.zapis) $('zapisKluc').placeholder = 'uložený ✓ (netreba zadávať znova)';
   $('prihlasenie').classList.toggle('hidden', !!p);
   $('prehlad').classList.toggle('hidden', !p);
   $('odhlasit').classList.toggle('hidden', !p);
-  if (p) obnov();
+  if (p) {
+    $('kodVahy').textContent = p.zapis ? `${p.kanal}-${p.zapis}-${p.kluc}` : 'Chýba Write API Key: odhlás sa a prihlás znova so všetkými 3 údajmi.';
+    nacitajUl();
+    obnov();
+  }
 }
 
 $('prihlasit').onclick = async () => {
-  const p = { kanal: $('kanal').value.trim(), kluc: $('kluc').value.trim() };
+  const p = { kanal: $('kanal').value.trim(), kluc: $('kluc').value.trim(), zapis: $('zapis').value.trim() };
   $('chyba').textContent = '';
-  if (!p.kanal) { $('chyba').textContent = 'Zadaj číslo kanála.'; return; }
-  try { await stiahni(p, 1); ulozPrihlasenie(p); ukaz(); }
-  catch (e) { $('chyba').textContent = 'Číslo kanála alebo kľúč nesedí. Skontroluj ich v ThingSpeaku.'; }
+  if (!p.kanal || !p.kluc || !p.zapis) { $('chyba').textContent = 'Vyplň všetky 3 políčka.'; return; }
+  try { await stiahni(p, 1, 0); ulozPrihlasenie(p); ukaz(); }
+  catch (e) { $('chyba').textContent = 'Číslo kanála alebo Read API Key nesedí. Skontroluj ich v ThingSpeaku.'; }
 };
-$('odhlasit').onclick = () => { zmazPrihlasenie(); if (graf) graf.destroy(); graf = null; ukaz(); };
+$('odhlasit').onclick = () => { zmaz('ulovaVaha'); if (graf) graf.destroy(); graf = null; ukaz(); };
 document.querySelectorAll('.ranges button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.ranges button').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); dni = +b.dataset.dni; obnov();
 });
-$('ulozInterval').onclick = async () => {
-  const p = nacitajPrihlasenie();
-  const n = parseInt($('novyInterval').value, 10);
-  const kluc = $('zapisKluc').value.trim() || (p && p.zapis) || '';
-  const sprava = $('intervalSprava');
-  if (!(n >= 1 && n <= 240)) { sprava.textContent = 'Zadaj číslo od 1 do 240.'; return; }
-  if (!kluc) { sprava.textContent = 'Zadaj Write API Key.'; return; }
-  sprava.textContent = 'Ukladám...';
-  try {
-    const r = await fetch(`https://api.thingspeak.com/update?api_key=${encodeURIComponent(kluc)}&field8=${n}`, { cache: 'no-store' });
-    const odp = (await r.text()).trim();
-    if (odp === '0' || !r.ok) {
-      sprava.textContent = 'Neuložilo sa. Buď nesedí Write API Key, alebo váha práve posielala, skús o 20 sekúnd.';
-      return;
-    }
-    if (p) { p.zapis = kluc; ulozPrihlasenie(p); }
-    $('zapisKluc').value = '';
-    sprava.textContent = `Uložené. Váha bude merať každých ${n} min od najbližšieho zobudenia.`;
-    obnov();
-  } catch (e) { sprava.textContent = 'Nepodarilo sa spojiť s ThingSpeakom.'; }
+
+$('kopirujKod').onclick = async () => {
+  const kod = $('kodVahy').textContent;
+  try { await navigator.clipboard.writeText(kod); $('kodSprava').textContent = 'Skopírované ✓'; }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents($('kodVahy'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    $('kodSprava').textContent = 'Kód je označený, skopíruj ho.';
+  }
 };
+
+const chybaZapisu = e => e.message === 'kluc'
+  ? 'Chýba Write API Key: odhlás sa a prihlás znova so všetkými 3 údajmi.'
+  : 'Neuložilo sa. Váha možno práve posielala údaje (ThingSpeak berie len 1 zápis za 15 s). Skús o 20 sekúnd.';
+
+$('ulozInterval').onclick = async () => {
+  const n = parseInt($('novyInterval').value, 10);
+  const s = $('intervalSprava');
+  if (!(n >= 1 && n <= 240)) { s.textContent = 'Zadaj číslo od 1 do 240.'; return; }
+  s.textContent = 'Ukladám…';
+  try { await zapis({ field8: n }); s.textContent = `Uložené ✓ Váha bude merať každých ${n} min od najbližšieho zobudenia.`; obnov(); }
+  catch (e) { s.textContent = chybaZapisu(e); }
+};
+
+$('kalibruj').onclick = async () => {
+  const s = $('kalSprava');
+  const skutocna = parseFloat(String($('kalSkutocna').value).replace(',', '.'));
+  const d = posledneData && posledneData.dva;
+  const p = d && posledna(d, 'kg');
+  const k = d && posledna(d, 'kal');
+  if (!(skutocna > 0.5)) { s.textContent = 'Zadaj skutočnú hmotnosť (aspoň 1 kg, čím viac, tým presnejšie).'; return; }
+  if (!p || p.kg < 0.3) { s.textContent = 'Váha zatiaľ ukazuje skoro 0 kg. Polož závažie a počkaj na ďalšie meranie.'; return; }
+  if (!k) { s.textContent = 'Váha ešte neposlala svoje kalibračné číslo. Nahraj do nej najnovší program.'; return; }
+  const nova = k.kal * p.kg / skutocna;
+  s.textContent = 'Ukladám…';
+  try {
+    await zapis({ field7: nova.toFixed(1) });
+    s.textContent = `Hotovo ✓ Váha ukazovala ${p.kg.toFixed(2)} kg, skutočnosť je ${skutocna} kg. Opravené pri najbližšom zobudení váhy. Ďalšie meranie by už malo sedieť.`;
+  } catch (e) { s.textContent = chybaZapisu(e); }
+};
+
 setInterval(obnov, 60000);   // každú minútu sa sama obnoví
 ukaz();
 </script>
